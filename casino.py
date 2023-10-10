@@ -1,14 +1,21 @@
 import random
-import time
 
-#display a player's hand
+# Function to initialize the deck with a predefined set of cards
+def initialize_deck():
+    suits = ['Hearts', 'Diamonds', 'Clubs', 'Spades']
+    values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Ace']
+    deck = [{'suit': suit, 'value': value} for suit in suits for value in values]
+    random.shuffle(deck)
+    return deck
+
+# Display a player's hand
 def display_hand(player):
     print(f"{player['name']}'s hand:")
     for i, card in enumerate(player['hand'], start=1):
         print(f"{i}: {card['value']} of {card['suit']}")
     print()
 
-#display a player's side deck (show only the top card)
+# Display a player's side deck (show only the top card)
 def display_side_deck(player):
     print(f"{player['name']}'s side deck:")
     if player['side_deck']:
@@ -17,21 +24,21 @@ def display_side_deck(player):
         print("Side deck is empty.")
     print()
 
-#display the cards on the table
+# Display the cards on the table
 def display_table(table):
     print("\nCards on the table:")
     for card in table:
         print(f"{card['value']} of {card['suit']}")
 
-#check if a player has a card in hand
+# Check if a player has a card in hand
 def has_card_in_hand(player, value):
     return any(card['value'] == value for card in player['hand'])
 
-#calculate the total points in a player's side deck
+# Calculate the total points in a player's side deck
 def calculate_side_deck_points(player):
     return sum(int(card['value']) for card in player['side_deck'])
 
-#allow a player to play a card, build, hit, or top
+# Allow a player to play a card, build, hit, or top
 def player_turn(player, table, deck, opponent):
     display_hand(player)
     display_table(table)
@@ -58,7 +65,7 @@ def player_turn(player, table, deck, opponent):
         except ValueError:
             print("Invalid input. Please enter a number.")
 
-#allow a player to play a card
+# Allow a player to play a card
 def play_card(player, table):
     while True:
         choice = input(f"{player['name']}, choose a card to play (enter the card's position, e.g., 1, 2, 3, 4): ")
@@ -74,53 +81,76 @@ def play_card(player, table):
         except ValueError:
             print("Invalid input. Please enter a number.")
 
-#allow a player to build with a card on the table
+# Allow a player to build with a card on the table
 def build_card(player, table):
     display_table(table)
-    build_value = input(f"{player['name']}, enter the total value you want to build (e.g., 10): ")
-    
-    try:
-        build_value = int(build_value)
-        
-        if not has_card_in_hand(player, str(build_value)):
-            print(f"You don't have a {build_value} in your hand. You can't build this.")
-            return
 
-        possible_builds = []
+    while True:
+        build_choice = input(f"{player['name']}, choose an action:\n1: Build with a card on the table\n2: Cancel build\nEnter your choice: ")
 
-        # 
-        for i in range(len(table)):
-            for j in range(i + 1, len(table)):
-                if table[i]['value'] != table[j]['value']:
-                    total_value = int(table[i]['value']) + int(table[j]['value'])
-                    total_value_ = table[j]['value']
-                    print(total_value_,total_value)
-                    if total_value == build_value:
-                        possible_builds.append((i, j))
+        if build_choice == '1':
+            # Prompt the player to choose the number they want to build
+            while True:
+                build_value = input(f"{player['name']}, enter the total value you want to build (e.g., 10): ")
 
-        if not possible_builds:
-            print("No valid builds found.")
-            return
+                try:
+                    build_value = int(build_value)
 
-        print("Possible builds on the table:")
-        for idx, (card1_idx, card2_idx) in enumerate(possible_builds, start=1):
-            print(f"{idx}: Build {table[card1_idx]['value']} and {table[card2_idx]['value']}")
+                    if not has_card_in_hand(player, str(build_value)):
+                        print(f"{player['name']}, you don't have a {build_value} in your hand. You can't build this.")
+                        continue
 
-        build_choice = input("Choose a build from the options above (enter the corresponding number, e.g., 1): ")
-        build_choice = int(build_choice) - 1
+                    possible_builds = []
 
-        if 0 <= build_choice < len(possible_builds):
-            card1_idx, card2_idx = possible_builds[build_choice]
-            build_cards = [table.pop(card1_idx), table.pop(card2_idx - 1)]
-            player['hand'].extend(build_cards)
-            print(f"{player['name']} built {build_value} with {build_cards[0]['value']} and {build_cards[1]['value']}.\n")
+                    # Find possible builds using cards from the table and the player's hand
+                    for i in range(len(table)):
+                        for j in range(len(player['hand'])):
+                            total_value = int(table[i]['value']) + int(player['hand'][j]['value'])
+                            if total_value == build_value:
+                                possible_builds.append((i, j))
+
+                    if not possible_builds:
+                        print("No valid builds found.")
+                        continue
+
+                    print("Possible builds:")
+                    for idx, (table_card_idx, hand_card_idx) in enumerate(possible_builds, start=1):
+                        print(f"{idx}: Build {table[table_card_idx]['value']} and {player['hand'][hand_card_idx]['value']}")
+
+                    build_choice = input("Choose a build from the options above (enter the corresponding number, e.g., 1): ")
+                    build_choice = int(build_choice) - 1
+
+                    if 0 <= build_choice < len(possible_builds):
+                        table_card_idx, hand_card_idx = possible_builds[build_choice]
+                        build_cards = [table.pop(table_card_idx), player['hand'].pop(hand_card_idx)]
+                        player['hand'].extend(build_cards)
+                        print(f"{player['name']} built {build_value} with {build_cards[0]['value']} and {build_cards[1]['value']}.\n")
+
+                        # Check if there is a card of the same value on the table and allow building on top of it
+                        for card_idx, card_on_table in enumerate(table):
+                            if card_on_table['value'] == str(build_value):
+                                build_cards_on_top = player['hand'][:2]  # You can build with the first 2 cards in hand
+                                if len(build_cards_on_top) == 2:
+                                    table.pop(card_idx)
+                                    player['hand'] = player['hand'][2:]
+                                    table.extend(build_cards_on_top)
+                                    print(f"{player['name']} built on top of {card_on_table['value']}.\n")
+                                    break
+
+                        break
+
+                    else:
+                        print("Invalid choice. Please choose a valid build.")
+
+                except ValueError:
+                    print("Invalid input. Please enter a valid number.")
+        elif build_choice == '2':
+            print("Build canceled.\n")
+            break
         else:
-            print("Invalid choice. Please choose a valid build.")
+            print("Invalid choice. Please choose a valid action (1 or 2).")
 
-    except ValueError:
-        print("Invalid input. Please enter a valid number.")
-
-#allow a player to hit and take a card from the table
+# Allow a player to hit and take a card from the table
 def hit_card(player, table, deck):
     if table:
         card_to_hit = random.choice(table)
@@ -130,7 +160,7 @@ def hit_card(player, table, deck):
     else:
         print("The table is empty. You cannot hit.")
 
-#allow a player to top with a matching card
+# Allow a player to top with a matching card
 def top_card(player, table, opponent):
     if table:
         matching_card = None
@@ -138,7 +168,7 @@ def top_card(player, table, opponent):
             if has_card_in_hand(player, card['value']):
                 matching_card = card
                 break
-        
+
         if matching_card:
             table.remove(matching_card)
             player['side_deck'].append(matching_card)  # Add to the side deck, not hand
@@ -148,7 +178,7 @@ def top_card(player, table, opponent):
     else:
         print("The table is empty. You cannot top.")
 
-#computer player to play a card (randomly)
+# Computer player to play a card (randomly)
 def computer_play(player, table):
     if player['hand']:
         card_to_play = random.choice(player['hand'])
@@ -157,11 +187,7 @@ def computer_play(player, table):
         print(f"{player['name']} played {card_to_play['value']} of {card_to_play['suit']} (Computer)\n")
 
 # Set Up the Deck
-suits = ['Hearts', 'Diamonds', 'Clubs', 'Spades']
-values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Ace']
-
-deck = [{'suit': suit, 'value': value} for suit in suits for value in values]
-random.shuffle(deck)
+deck = initialize_deck()
 
 # Welcome Players and Get Their Names
 print("Welcome to Alliance Casino!")
