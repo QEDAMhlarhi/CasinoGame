@@ -1,6 +1,6 @@
 import random
 
-# Function to initialize the deck with a predefined set of cards
+# Function to initialize the deck
 def initialize_deck():
     suits = ['Hearts', 'Diamonds', 'Clubs', 'Spades']
     values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Ace']
@@ -220,7 +220,7 @@ while player['hand']:
 
     display_table(table)
 
-# Show Final Result
+# Show Result
 display_table(table)
 
 # Determine the Winner based on side deck points
