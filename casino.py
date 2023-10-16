@@ -98,7 +98,7 @@ def build_card(player, table):
 
                     if not has_card_in_hand(player, str(build_value)):
                         print(f"{player['name']}, you don't have a {build_value} in your hand. You can't build this.")
-                        continue
+                        break
 
                     possible_builds = []
 
@@ -111,7 +111,7 @@ def build_card(player, table):
 
                     if not possible_builds:
                         print("No valid builds found.")
-                        continue
+                        break
 
                     print("Possible builds:")
                     for idx, (table_card_idx, hand_card_idx) in enumerate(possible_builds, start=1):
