@@ -150,6 +150,7 @@ def build_card(player, table):
         else:
             print("Invalid choice. Please choose a valid action (1 or 2).")
 
+
 # Allow a player to hit and take a card from the table
 def hit_card(player, table, deck):
     if table:
