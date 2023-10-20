@@ -1,6 +1,6 @@
 import random
 
-# Function to initialize the deck
+# the deck
 def initialize_deck():
     suits = ['Hearts', 'Diamonds', 'Clubs', 'Spades']
     values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Ace']
@@ -38,7 +38,7 @@ def has_card_in_hand(player, value):
 def calculate_side_deck_points(player):
     return sum(int(card['value']) for card in player['side_deck'])
 
-# Allow a player to play a card, build, hit, or top
+# Allow players to play a card, build, hit, or top
 def player_turn(player, table, deck, opponent):
     display_hand(player)
     display_table(table)
@@ -65,7 +65,7 @@ def player_turn(player, table, deck, opponent):
         except ValueError:
             print("Invalid input. Please enter a number.")
 
-# Allow a player to play a card
+# Allow players to play a card
 def play_card(player, table):
     while True:
         choice = input(f"{player['name']}, choose a card to play (enter the card's position, e.g., 1, 2, 3, 4): ")
@@ -81,7 +81,7 @@ def play_card(player, table):
         except ValueError:
             print("Invalid input. Please enter a number.")
 
-# Allow a player to build with a card on the table
+# Allow players to build with a card on the table
 def build_card(player, table):
     display_table(table)
 
@@ -89,7 +89,7 @@ def build_card(player, table):
         build_choice = input(f"{player['name']}, choose an action:\n1: Build with a card on the table\n2: Cancel build\nEnter your choice: ")
 
         if build_choice == '1':
-            # Prompt the player to choose the number they want to build
+            # choose the number they want to build
             while True:
                 build_value = input(f"{player['name']}, enter the total value you want to build (e.g., 10): ")
 
@@ -129,7 +129,7 @@ def build_card(player, table):
                         # Check if there is a card of the same value on the table and allow building on top of it
                         for card_idx, card_on_table in enumerate(table):
                             if card_on_table['value'] == str(build_value):
-                                build_cards_on_top = player['hand'][:2]  # You can build with the first 2 cards in hand
+                                build_cards_on_top = player['hand'][:1]  # You can build with the first 2 cards in hand
                                 if len(build_cards_on_top) == 2:
                                     table.pop(card_idx)
                                     player['hand'] = player['hand'][2:]
