@@ -55,7 +55,7 @@ def display_hand(player):
     print(f"\n--- {player.name}'s Hand ---")
     for i, card in enumerate(player.hand, start=1):
         print(f"{i}: {card}")
-    print("-" * 20)
+    print("-" * 25)
 
 def display_table(table):
     print("\n[ TABLE ]")
@@ -64,7 +64,7 @@ def display_table(table):
     else:
         for i, card in enumerate(table, start=1):
             print(f"{i}: {card}")
-    print("-" * 20)
+    print("-" * 25)
 
 def display_side_deck(player):
     points = player.get_points()
@@ -257,13 +257,13 @@ def main():
     
     for p in players:
         points = p.get_points()
-        print(f"{p.name} collected {len(p.side_deck)} cards for a total of {points} points.")
+        display_side_deck(p)
         
     human_points = human.get_points()
     comp_points = computer.get_points()
     
     if human_points > comp_points:
-        print(f"\n🎉 {human.name} WINS! 🎉")
+        print(f"\n {human.name} WINS! 🎉")
     elif comp_points > human_points:
         print(f"\n🤖 {computer.name} WINS! 🤖")
     else:
