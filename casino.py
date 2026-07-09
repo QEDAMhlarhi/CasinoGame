@@ -1,242 +1,273 @@
 import random
 
-# the deck
+# ==========================================
+# 1. CLASSES & CONSTANTS
+# ==========================================
+
+# Mapping card faces to numeric values to prevent the 'Ace' crash
+CARD_VALUES = {
+    '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, 
+    '7': 7, '8': 8, '9': 9, '10': 10, 'Ace': 1
+}
+
+class Card:
+    def __init__(self, suit, value):
+        self.suit = suit
+        self.value = value
+        self.numeric_value = CARD_VALUES[value] # Pre-calculate to avoid int() crashes
+
+    def __str__(self):
+        return f"{self.value} of {self.suit}"
+
+class Player:
+    def __init__(self, name, is_computer=False):
+        self.name = name
+        self.hand = []
+        self.side_deck = []
+        self.is_computer = is_computer
+
+    def get_points(self):
+        return sum(card.numeric_value for card in self.side_deck)
+
+# ==========================================
+# 2. HELPER & DISPLAY FUNCTIONS
+# ==========================================
+
 def initialize_deck():
     suits = ['Hearts', 'Diamonds', 'Clubs', 'Spades']
-    values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'Ace']
-    deck = [{'suit': suit, 'value': value} for suit in suits for value in values]
+    values = list(CARD_VALUES.keys())
+    deck = [Card(suit, value) for suit in suits for value in values]
     random.shuffle(deck)
     return deck
 
-# Display a player's hand
+def get_valid_int(prompt, min_val, max_val):
+    """Helper to cleanly handle user input without repeating try/except blocks."""
+    while True:
+        try:
+            choice = int(input(prompt))
+            if min_val <= choice <= max_val:
+                return choice
+            print(f"Please enter a number between {min_val} and {max_val}.")
+        except ValueError:
+            print("Invalid input. Please enter a valid number.")
+
 def display_hand(player):
-    print(f"{player['name']}'s hand:")
-    for i, card in enumerate(player['hand'], start=1):
-        print(f"{i}: {card['value']} of {card['suit']}")
-    print()
+    print(f"\n--- {player.name}'s Hand ---")
+    for i, card in enumerate(player.hand, start=1):
+        print(f"{i}: {card}")
+    print("-" * 20)
 
-# Display a player's side deck (show only the top card)
-def display_side_deck(player):
-    print(f"{player['name']}'s side deck:")
-    if player['side_deck']:
-        print(f"{player['side_deck'][-1]['value']} of {player['side_deck'][-1]['suit']} (Top Card)")
-    else:
-        print("Side deck is empty.")
-    print()
-
-# Display the cards on the table
 def display_table(table):
-    print("\nCards on the table:")
-    for card in table:
-        print(f"{card['value']} of {card['suit']}")
+    print("\n[ TABLE ]")
+    if not table:
+        print("The table is empty.")
+    else:
+        for i, card in enumerate(table, start=1):
+            print(f"{i}: {card}")
+    print("-" * 20)
 
-# Check if a player has a card in hand
-def has_card_in_hand(player, value):
-    return any(card['value'] == value for card in player['hand'])
+def display_side_deck(player):
+    points = player.get_points()
+    print(f"{player.name}'s Side Deck: {len(player.side_deck)} cards ({points} points)")
 
-# Calculate the total points in a player's side deck
-def calculate_side_deck_points(player):
-    return sum(int(card['value']) for card in player['side_deck'])
+# ==========================================
+# 3. GAME MECHANICS
+# ==========================================
 
-# Allow players to play a card, build, hit, or top
-def player_turn(player, table, deck, opponent):
+def human_turn(player, table, last_capture_player):
     display_hand(player)
     display_table(table)
-    display_side_deck(player)
-
-    while True:
-        choice = input(f"{player['name']}, choose an action:\n1: Play a card\n2: Build with a card on the table\n3: Hit and take a card from the table\n4: Top with a matching card\nEnter your choice: ")
-        try:
-            choice = int(choice)
-            if choice == 1:
-                play_card(player, table)
+    
+    # Determine available actions
+    can_capture_match = False
+    can_capture_sum = False
+    
+    # Check if we can capture a single matching card
+    for h_card in player.hand:
+        for t_card in table:
+            if h_card.numeric_value == t_card.numeric_value:
+                can_capture_match = True
                 break
-            elif choice == 2:
-                build_card(player, table)
-                break
-            elif choice == 3:
-                hit_card(player, table, deck)
-                break
-            elif choice == 4:
-                top_card(player, table, opponent)
-                break
-            else:
-                print("Invalid choice. Please choose a valid action.")
-        except ValueError:
-            print("Invalid input. Please enter a number.")
+                
+    # Check if we can capture a sum of exactly 2 cards
+    for h_card in player.hand:
+        for i in range(len(table)):
+            for j in range(i + 1, len(table)):
+                if table[i].numeric_value + table[j].numeric_value == h_card.numeric_value:
+                    can_capture_sum = True
+                    break
 
-# Allow players to play a card
-def play_card(player, table):
-    while True:
-        choice = input(f"{player['name']}, choose a card to play (enter the card's position, e.g., 1, 2, 3, 4): ")
-        try:
-            choice = int(choice)
-            if 1 <= choice <= len(player['hand']):
-                card_to_play = player['hand'].pop(choice - 1)
-                table.append(card_to_play)
-                print(f"{player['name']} played {card_to_play['value']} of {card_to_play['suit']} on the table.\n")
-                break
-            else:
-                print("Invalid choice. Please choose a valid card.")
-        except ValueError:
-            print("Invalid input. Please enter a number.")
+    print("\nActions:")
+    print("1: Play a card to the table")
+    if can_capture_match:
+        print("2: Capture a single matching card")
+    if can_capture_sum:
+        print("3: Capture a sum of two cards")
+        
+    max_action = 1
+    if can_capture_sum: max_action = 3
+    elif can_capture_match: max_action = 2
 
-# Allow players to build with a card on the table
-def build_card(player, table):
-    display_table(table)
+    action = get_valid_int("Choose an action: ", 1, max_action)
 
-    while True:
-        build_choice = input(f"{player['name']}, choose an action:\n1: Build with a card on the table\n2: Cancel build\nEnter your choice: ")
+    if action == 1:
+        # PLAY A CARD
+        card_idx = get_valid_int("Choose a card from your hand to play: ", 1, len(player.hand))
+        played_card = player.hand.pop(card_idx - 1)
+        table.append(played_card)
+        print(f"{player.name} played {played_card} to the table.")
 
-        if build_choice == '1':
-            # choose the number they want to build
-            while True:
-                build_value = input(f"{player['name']}, enter the total value you want to build (e.g., 10): ")
+    elif action == 2:
+        # CAPTURE SINGLE MATCH
+        print("Choose the card from your hand to capture with:")
+        hand_idx = get_valid_int("Hand card: ", 1, len(player.hand))
+        hand_card = player.hand[hand_idx - 1]
+        
+        # Find valid table cards
+        valid_table_cards = [i+1 for i, t in enumerate(table) if t.numeric_value == hand_card.numeric_value]
+        print(f"Choose the matching card on the table ({valid_table_cards}):")
+        table_idx = get_valid_int("Table card: ", min(valid_table_cards), max(valid_table_cards))
+        
+        table_card = table.pop(table_idx - 1)
+        player.hand.remove(hand_card)
+        player.side_deck.extend([hand_card, table_card])
+        print(f"{player.name} captured {table_card} with {hand_card}!")
+        last_capture_player = player
 
-                try:
-                    build_value = int(build_value)
+    elif action == 3:
+        # CAPTURE SUM
+        print("Choose the card from your hand to capture with:")
+        hand_idx = get_valid_int("Hand card: ", 1, len(player.hand))
+        hand_card = player.hand[hand_idx - 1]
+        
+        print("Choose the FIRST card on the table to sum:")
+        t1_idx = get_valid_int("Table card 1: ", 1, len(table))
+        
+        print("Choose the SECOND card on the table to sum:")
+        t2_idx = get_valid_int("Table card 2: ", 1, len(table))
+        while t2_idx == t1_idx:
+            print("You must choose a different card for the second choice.")
+            t2_idx = get_valid_int("Table card 2: ", 1, len(table))
 
-                    if not has_card_in_hand(player, str(build_value)):
-                        print(f"{player['name']}, you don't have a {build_value} in your hand. You can't build this.")
-                        break
-
-                    possible_builds = []
-
-                    # Find possible builds using cards from the table and the player's hand
-                    for i in range(len(table)):
-                        for j in range(len(player['hand'])):
-                            total_value = int(table[i]['value']) + int(player['hand'][j]['value'])
-                            if total_value == build_value:
-                                possible_builds.append((i, j))
-
-                    if not possible_builds:
-                        print("No valid builds found.")
-                        break
-
-                    print("Possible builds:")
-                    for idx, (table_card_idx, hand_card_idx) in enumerate(possible_builds, start=1):
-                        print(f"{idx}: Build {table[table_card_idx]['value']} and {player['hand'][hand_card_idx]['value']}")
-
-                    build_choice = input("Choose a build from the options above (enter the corresponding number, e.g., 1): ")
-                    build_choice = int(build_choice) - 1
-
-                    if 0 <= build_choice < len(possible_builds):
-                        table_card_idx, hand_card_idx = possible_builds[build_choice]
-                        build_cards = [table.pop(table_card_idx), player['hand'].pop(hand_card_idx)]
-                        player['hand'].extend(build_cards)
-                        print(f"{player['name']} built {build_value} with {build_cards[0]['value']} and {build_cards[1]['value']}.\n")
-
-                        # Check if there is a card of the same value on the table and allow building on top of it
-                        for card_idx, card_on_table in enumerate(table):
-                            if card_on_table['value'] == str(build_value):
-                                build_cards_on_top = player['hand'][:1]  # You can build with the first 2 cards in hand
-                                if len(build_cards_on_top) == 2:
-                                    table.pop(card_idx)
-                                    player['hand'] = player['hand'][2:]
-                                    table.extend(build_cards_on_top)
-                                    print(f"{player['name']} built on top of {card_on_table['value']}.\n")
-                                    break
-
-                        break
-
-                    else:
-                        print("Invalid choice. Please choose a valid build.")
-
-                except ValueError:
-                    print("Invalid input. Please enter a valid number.")
-        elif build_choice == '2':
-            print("Build canceled.\n")
-            break
+        # Validate the sum
+        card1 = table[t1_idx - 1]
+        card2 = table[t2_idx - 1]
+        if card1.numeric_value + card2.numeric_value == hand_card.numeric_value:
+            # Remove cards (remove higher index first to avoid shifting issues)
+            for idx in sorted([t1_idx - 1, t2_idx - 1], reverse=True):
+                table.pop(idx)
+            player.hand.remove(hand_card)
+            player.side_deck.extend([hand_card, card1, card2])
+            print(f"{player.name} captured {card1} and {card2} (sum {card1.numeric_value + card2.numeric_value}) with {hand_card}!")
+            last_capture_player = player
         else:
-            print("Invalid choice. Please choose a valid action (1 or 2).")
+            print("Invalid sum! Those cards don't match your hand card. Turn wasted, playing card instead.")
+            table.append(player.hand.pop(hand_idx - 1))
 
+    return last_capture_player
 
-# Allow a player to hit and take a card from the table
-def hit_card(player, table, deck):
-    if table:
-        card_to_hit = random.choice(table)
-        table.remove(card_to_hit)
-        player['side_deck'].append(card_to_hit)  # Add to the side deck, not hand
-        print(f"{player['name']} hit and took {card_to_hit['value']} of {card_to_hit['suit']} from the table to their side deck.\n")
-    else:
-        print("The table is empty. You cannot hit.")
+def computer_turn(player, table, last_capture_player):
+    print(f"\n--- {player.name}'s Turn ---")
+    
+    # 1. Try to capture a single match
+    for h_card in player.hand:
+        for t_card in table:
+            if h_card.numeric_value == t_card.numeric_value:
+                table.remove(t_card)
+                player.hand.remove(h_card)
+                player.side_deck.extend([h_card, t_card])
+                print(f"Computer captured {t_card} with {h_card}.")
+                return player # Return self as last capture player
 
-# Allow a player to top with a matching card
-def top_card(player, table, opponent):
-    if table:
-        matching_card = None
-        for card in table:
-            if has_card_in_hand(player, card['value']):
-                matching_card = card
-                break
+    # 2. Try to capture a sum of 2 cards
+    for h_card in player.hand:
+        for i in range(len(table)):
+            for j in range(i + 1, len(table)):
+                if table[i].numeric_value + table[j].numeric_value == h_card.numeric_value:
+                    card1, card2 = table[i], table[j]
+                    table.remove(card1)
+                    table.remove(card2)
+                    player.hand.remove(h_card)
+                    player.side_deck.extend([h_card, card1, card2])
+                    print(f"Computer captured {card1} and {card2} (sum {card1.numeric_value + card2.numeric_value}) with {h_card}.")
+                    return player
 
-        if matching_card:
-            table.remove(matching_card)
-            player['side_deck'].append(matching_card)  # Add to the side deck, not hand
-            print(f"{player['name']} topped with a matching {matching_card['value']} from the table to their side deck.\n")
+    # 3. If no captures possible, play the lowest value card
+    player.hand.sort(key=lambda c: c.numeric_value)
+    played_card = player.hand.pop(0)
+    table.append(played_card)
+    print(f"Computer played {played_card} to the table.")
+    
+    return last_capture_player
+
+# ==========================================
+# 4. MAIN GAME LOOP
+# ==========================================
+
+def main():
+    print("=" * 30)
+    print("Welcome to Alliance Casino!")
+    print("=" * 30)
+    
+    player_name = input("Player, please enter your name: ")
+    
+    # Setup Players and Deck
+    deck = initialize_deck()
+    human = Player(player_name)
+    computer = Player("Computer", is_computer=True)
+    players = [human, computer]
+    
+    # Deal 20 cards to each player (40 card deck total)
+    for _ in range(20):
+        for p in players:
+            p.hand.append(deck.pop())
+            
+    table = []
+    current_player_idx = 0
+    last_capture_player = None # Tracks who gets the leftover cards at the end
+
+    # Game Loop
+    while any(len(p.hand) > 0 for p in players):
+        current_player = players[current_player_idx]
+        
+        print(f"\n{'='*15} {current_player.name}'s Turn {'='*15}")
+        
+        if not current_player.is_computer:
+            last_capture_player = human_turn(current_player, table, last_capture_player)
         else:
-            print(f"{player['name']} can't top because there is no matching card in their hand.\n")
+            last_capture_player = computer_turn(current_player, table, last_capture_player)
+            
+        # Switch turns
+        current_player_idx = 1 - current_player_idx
+
+    # End Game: Sweep leftover table cards
+    if table:
+        print("\n--- End of Round Sweep ---")
+        if last_capture_player:
+            print(f"{last_capture_player.name} made the last capture and sweeps the remaining {len(table)} cards from the table!")
+            last_capture_player.side_deck.extend(table)
+        else:
+            print("No captures were made. Cards remain on the table.")
+        table = []
+
+    # Calculate and Display Results
+    print("\n" + "=" * 30)
+    print("GAME OVER - FINAL RESULTS")
+    print("=" * 30)
+    
+    for p in players:
+        points = p.get_points()
+        print(f"{p.name} collected {len(p.side_deck)} cards for a total of {points} points.")
+        
+    human_points = human.get_points()
+    comp_points = computer.get_points()
+    
+    if human_points > comp_points:
+        print(f"\n🎉 {human.name} WINS! 🎉")
+    elif comp_points > human_points:
+        print(f"\n🤖 {computer.name} WINS! 🤖")
     else:
-        print("The table is empty. You cannot top.")
+        print("\n🤝 It's a TIE! 🤝")
 
-# Computer player to play a card (randomly)
-def computer_play(player, table):
-    if player['hand']:
-        card_to_play = random.choice(player['hand'])
-        player['hand'].remove(card_to_play)
-        table.append(card_to_play)
-        print(f"{player['name']} played {card_to_play['value']} of {card_to_play['suit']} (Computer)\n")
-
-# Set Up the Deck
-deck = initialize_deck()
-
-# Welcome Players and Get Their Names
-print("Welcome to Alliance Casino!")
-player_name = input("Player, please enter your name: ")
-computer_name = "Computer"
-
-# Deal 20 Cards to Each Player
-num_cards_to_deal = 20  # Adjust the number of cards to deal
-
-players = [{'name': player_name, 'hand': [], 'side_deck': []}, {'name': computer_name, 'hand': [], 'side_deck': []}]
-
-while len(deck) >= num_cards_to_deal * len(players):
-    for _ in range(num_cards_to_deal):
-        for player in players:
-            card = deck.pop()
-            player['hand'].append(card)
-
-# Main Game Loop
-table = []
-player = players[0]
-computer = players[1]
-
-while player['hand']:
-    if player == players[0]:
-        player_turn(player, table, deck, computer)
-        player = players[1]
-    else:
-        computer_play(player, table)
-        player = players[0]
-
-    display_table(table)
-
-# Show Result
-display_table(table)
-
-# Determine the Winner based on side deck points
-player_points = calculate_side_deck_points(players[0])
-computer_points = calculate_side_deck_points(players[1])
-
-if player_points > computer_points:
-    print(f"{player_name} wins with {player_points} points in the side deck!")
-elif player_points < computer_points:
-    print(f"{computer_name} wins with {computer_points} points in the side deck!")
-else:
-    print("It's a tie!")
-
-# Display remaining cards in each player's hand and side deck
-display_hand(players[0])
-display_side_deck(players[0])
-display_hand(players[1])
-display_side_deck(players[1])
+if __name__ == "__main__":
+    main()
