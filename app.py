@@ -4,7 +4,7 @@ import random
 # ==========================================
 # 1. SETUP & CONSTANTS
 # ==========================================
-st.set_page_config(page_title="SA Street Casino", layout="wide", page_icon="")
+st.set_page_config(page_title="SA Street Casino", layout="wide", page_icon="🎰")
 
 CARD_VALUES = {
     'Ace': 1, '2': 2, '3': 3, '4': 4, '5': 5, 
@@ -102,7 +102,7 @@ def init_game(player_name):
     st.session_state.computer = computer
     st.session_state.table_cards = []
     st.session_state.table_builds = [] 
-    st.session_state.message = "Round 1 started! You can Build, but cannot Throw if a Build is on the table."
+    st.session_state.message = "Round 1 started! If you build, you must capture it if you can."
     st.session_state.game_over = False
     st.session_state.last_capturer = None
     st.session_state.selected_hand_idx = None
@@ -119,7 +119,7 @@ def deal_round_2():
         if deck: computer.hand.append(deck.pop())
         
     st.session_state.round_num = 2
-    st.session_state.message = "Round 2 (Final Round) started! You can Throw even if Builds are on the table."
+    st.session_state.message = "Round 2 (Final Round) started!"
     st.session_state.selected_hand_idx = None
     st.session_state.selected_table_card_idx = None
     st.session_state.selected_build_idx = None
@@ -192,7 +192,7 @@ def computer_turn():
                 st.session_state.message = f"🤖 Computer Stole Build {build['value']}!"
                 return
 
-    # 2. Try to Build (Allowed in both rounds now)
+    # 2. Try to Build (Allowed in both rounds)
     for h_idx, h_card in enumerate(comp.hand):
         for t_idx, t_card in enumerate(table_cards):
             build_value = h_card.numeric_value + t_card.numeric_value
@@ -205,7 +205,7 @@ def computer_turn():
                 else:
                     build_cards = [table_cards.pop(t_idx), comp.hand.pop(h_idx)]
                     table_builds.append({'cards': build_cards, 'value': build_value, 'owner': comp.name})
-                    st.session_state.message = f"🤖 Computer Built {build_value}!"
+                    st.session_state.message = f" Computer Built {build_value}!"
                 return
 
     # 3. Throw lowest card
@@ -218,17 +218,18 @@ def computer_turn():
 # 4. MAIN APP UI
 # ==========================================
 def main():
-    st.title("🎰 SA Street Casino 🇦")
+    st.title("🎰 SA Street Casino 🇿")
     
     if 'human' not in st.session_state:
         st.markdown("""
         ### 🇿🇦 Welcome to South African Street Casino!
         **Street Rules:**
-        - 🃏 Deck: Ace to 10 only. Two rounds of 10 cards.
+        -  Deck: Ace to 10 only. Two rounds of 10 cards.
         - 🏗️ **Building:** Allowed in Round 1 and Round 2.
-        - 🚫 **Round 1 Restriction:** If there is a Build on the table, you **CANNOT Throw**. You must Hit or Build.
+        - 🚫 **Round 1 Restriction:** If YOU build a number, you MUST capture it if you can. If you can't capture or build on it, you can throw.
+        - ✅ If opponent builds, you can still throw.
         - 🔄 **Merging:** You cannot have two "Build 10s". New builds merge into existing ones!
-        - 🦹 **Steal:** Capture an opponent's Build if you have the matching number.
+        -  **Steal:** Capture an opponent's Build if you have the matching number.
         """)
         name = st.text_input("Enter Your Name", "Player")
         if st.button("🎲 Start Game", type="primary"):
@@ -247,12 +248,12 @@ def main():
             <p>Cards: {len(st.session_state.human.side_deck)}</p>
         </div>
         <div class="score-box">
-            <h3>🤖 Computer</h3>
+            <h3> Computer</h3>
             <p style="font-size: 1.5rem; color: #FFD700;">{st.session_state.computer.get_points()} pts</p>
             <p>Cards: {len(st.session_state.computer.side_deck)}</p>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("🔄 New Game"):
+        if st.button(" New Game"):
             st.session_state.clear()
             st.rerun()
 
@@ -268,7 +269,7 @@ def main():
                 st.balloons()
                 st.success(f"🎉 {st.session_state.human.name} WINS! 🎉")
             elif c_pts > h_pts:
-                st.error(f"🤖 Computer WINS!")
+                st.error(f" Computer WINS!")
             else:
                 st.warning("🤝 It's a TIE!")
             st.markdown(f"### Final Score: {h_pts} - {c_pts}")
@@ -331,16 +332,39 @@ def main():
         selected_card = human.hand[st.session_state.selected_hand_idx]
         
         # RULE CHECK: Can we throw?
-        # In Round 1, if there is ANY build on the table, we cannot throw.
         throw_disabled = False
-        if st.session_state.round_num == 1 and len(st.session_state.table_builds) > 0:
-            throw_disabled = True
+        warning_message = ""
+        
+        if st.session_state.round_num == 1:
+            # Check if human owns any build on the table
+            human_builds = [b for b in st.session_state.table_builds if b['owner'] == human.name]
+            
+            if human_builds:
+                # Check if player can capture any of their own builds
+                can_capture_own_build = any(
+                    selected_card.numeric_value == build['value'] 
+                    for build in human_builds
+                )
+                
+                # Check if player can build on top of their own build
+                # (by adding a table card to reach the build value)
+                can_build_on_own = False
+                for build in human_builds:
+                    for t_card in st.session_state.table_cards:
+                        if selected_card.numeric_value + t_card.numeric_value == build['value']:
+                            can_build_on_own = True
+                            break
+                
+                # If player can capture OR build on their own build, they MUST do so
+                if can_capture_own_build or can_build_on_own:
+                    throw_disabled = True
+                    warning_message = "⚠️ ROUND 1 RULE: You have a build on the table and can capture/build on it! You must Hit or Build on your own build."
 
         st.markdown('<div class="action-panel">', unsafe_allow_html=True)
         st.markdown(f"#### 🎯 Action for {selected_card} (Value: {selected_card.numeric_value})")
         
         if throw_disabled:
-            st.markdown('<div class="warning-box">⚠️ ROUND 1 RULE: A Build is on the table! You cannot Throw. You must Hit or Build.</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="warning-box">{warning_message}</div>', unsafe_allow_html=True)
 
         col1, col2, col3 = st.columns(3)
         
@@ -401,7 +425,6 @@ def main():
             st.caption("Select a table card to build with!")
             can_build = False
             
-            # Build is now allowed in BOTH rounds
             if st.session_state.selected_table_card_idx is not None:
                 t_card = st.session_state.table_cards[st.session_state.selected_table_card_idx]
                 build_value = selected_card.numeric_value + t_card.numeric_value
@@ -440,4 +463,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
