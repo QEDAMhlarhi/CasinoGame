@@ -1,5 +1,6 @@
 import streamlit as st
 import random
+import copy
 
 # ==========================================
 # 1. SETUP & CONSTANTS
@@ -11,7 +12,7 @@ CARD_VALUES = {
     '6': 6, '7': 7, '8': 8, '9': 9, '10': 10
 }
 SUITS = ['Hearts', 'Diamonds', 'Clubs', 'Spades']
-SUITS_SYMBOLS = {'Hearts': '♥', 'Diamonds': '♦', 'Clubs': '♣', 'Spades': '♠'}
+SUITS_SYMBOLS = {'Hearts': '♥', 'Diamonds': '♦', 'Clubs': '', 'Spades': '♠'}
 
 st.markdown("""
 <style>
@@ -93,6 +94,14 @@ st.markdown("""
         background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%); color: #000; font-weight: bold;
         border: none; border-radius: 8px; padding: 12px 20px; width: 100%;
     }
+    .stButton>button:hover {
+        background: linear-gradient(135deg, #FFA500 0%, #FFD700 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(0,0,0,0.4);
+    }
+    .stButton>button:disabled {
+        background: #555; color: #888; cursor: not-allowed; transform: none;
+    }
     .action-panel {
         background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%); padding: 25px; border-radius: 15px;
         border: 3px solid #00ff88; margin-top: 25px;
@@ -129,6 +138,10 @@ st.markdown("""
         background: #8B0000; padding: 10px; border-radius: 8px; margin: 10px 0;
         border: 2px solid #ff4444; color: #ffcccc;
     }
+    .undo-btn {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
+        color: white; font-weight: bold;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -145,6 +158,18 @@ class Card:
 
     def __str__(self):
         return f"{self.value}{self.symbol}"
+    
+    def to_dict(self):
+        return {'suit': self.suit, 'value': self.value, 'numeric_value': self.numeric_value, 
+                'symbol': self.symbol, 'is_red': self.is_red}
+    
+    @staticmethod
+    def from_dict(d):
+        card = Card(d['suit'], d['value'])
+        card.numeric_value = d['numeric_value']
+        card.symbol = d['symbol']
+        card.is_red = d['is_red']
+        return card
 
 class Player:
     def __init__(self, name, is_computer=False):
@@ -155,10 +180,67 @@ class Player:
 
     def get_points(self):
         return sum(card.numeric_value for card in self.side_deck)
+    
+    def to_dict(self):
+        return {
+            'name': self.name,
+            'hand': [c.to_dict() for c in self.hand],
+            'side_deck': [c.to_dict() for c in self.side_deck],
+            'is_computer': self.is_computer
+        }
+    
+    @staticmethod
+    def from_dict(d):
+        player = Player(d['name'], d['is_computer'])
+        player.hand = [Card.from_dict(c) for c in d['hand']]
+        player.side_deck = [Card.from_dict(c) for c in d['side_deck']]
+        return player
 
 # ==========================================
 # 3. HELPER FUNCTIONS
 # ==========================================
+def save_game_state():
+    """Save current game state to history for undo"""
+    if 'game_history' not in st.session_state:
+        st.session_state.game_history = []
+    
+    # Limit history to last 10 moves
+    if len(st.session_state.game_history) >= 10:
+        st.session_state.game_history.pop(0)
+    
+    state = {
+        'round_num': st.session_state.round_num,
+        'human': st.session_state.human.to_dict(),
+        'computer': st.session_state.computer.to_dict(),
+        'table_cards': [c.to_dict() for c in st.session_state.table_cards],
+        'table_builds': st.session_state.table_builds,
+        'message': st.session_state.message,
+        'last_capturer': st.session_state.last_capturer.name if st.session_state.last_capturer else None,
+        'game_over': st.session_state.game_over
+    }
+    st.session_state.game_history.append(state)
+
+def undo_last_move():
+    """Restore previous game state"""
+    if 'game_history' not in st.session_state or len(st.session_state.game_history) == 0:
+        return False
+    
+    state = st.session_state.game_history.pop()
+    
+    st.session_state.round_num = state['round_num']
+    st.session_state.human = Player.from_dict(state['human'])
+    st.session_state.computer = Player.from_dict(state['computer'])
+    st.session_state.table_cards = [Card.from_dict(c) for c in state['table_cards']]
+    st.session_state.table_builds = state['table_builds']
+    st.session_state.message = state['message']
+    st.session_state.last_capturer = st.session_state.human if state['last_capturer'] == st.session_state.human.name else st.session_state.computer if state['last_capturer'] else None
+    st.session_state.game_over = state['game_over']
+    st.session_state.selected_hand_idx = None
+    st.session_state.selected_build_idx = None
+    st.session_state.selected_table_cards = []
+    
+    return True
+
 def init_game(player_name):
     deck = [Card(suit, value) for suit in SUITS for value in CARD_VALUES.keys()]
     random.shuffle(deck)
@@ -180,6 +262,7 @@ def init_game(player_name):
     st.session_state.selected_hand_idx = None
     st.session_state.selected_build_idx = None
     st.session_state.selected_table_cards = []
+    st.session_state.game_history = []
 
 def deal_round_2():
     human = st.session_state.human
@@ -248,7 +331,7 @@ def check_round_end():
             if remaining > 0 and st.session_state.last_capturer:
                 for c in st.session_state.table_cards: st.session_state.last_capturer.side_deck.append(c)
                 for b in st.session_state.table_builds: st.session_state.last_capturer.side_deck.extend(b['cards'])
-                st.session_state.end_sweep_message = f" END SWEEP: {st.session_state.last_capturer.name} takes {remaining} cards!"
+                st.session_state.end_sweep_message = f"🧹 END SWEEP: {st.session_state.last_capturer.name} takes {remaining} cards!"
             st.session_state.table_cards = []
             st.session_state.table_builds = []
             return True
@@ -261,17 +344,15 @@ def computer_turn():
     table_builds = st.session_state.table_builds
     if not comp.hand: return
 
-    # 1. Hit single card
     for h_idx, h_card in enumerate(comp.hand):
         for t_idx, t_card in enumerate(table_cards):
             if h_card.numeric_value == t_card.numeric_value:
                 table_cards.pop(t_idx); comp.hand.pop(h_idx)
                 comp.side_deck.append(t_card); comp.side_deck.append(h_card)
                 st.session_state.last_capturer = comp
-                st.session_state.message = f" Hit {t_card} with {h_card}!"
+                st.session_state.message = f"🤖 Hit {t_card} with {h_card}!"
                 return
 
-    # 2. Sweep sum
     for h_idx, h_card in enumerate(comp.hand):
         for i in range(len(table_cards)):
             for j in range(i + 1, len(table_cards)):
@@ -284,17 +365,12 @@ def computer_turn():
                     st.session_state.message = f"🤖 Swept {c1}+{c2} with {h_card}!"
                     return
 
-    # 3. Steal build - ALSO captures all matching loose cards and opponent's top card
     for h_idx, h_card in enumerate(comp.hand):
         for b_idx, build in enumerate(table_builds):
             if h_card.numeric_value == build['value']:
                 comp.hand.pop(h_idx)
-                # Add the build cards first
-                comp.side_deck.extend(build['cards'])
-                # Add the capturing card on top
-                comp.side_deck.append(h_card)
+                comp.side_deck.extend(build['cards']); comp.side_deck.append(h_card)
                 
-                # Also capture all loose cards of the same value on the table
                 extra_captured = []
                 indices_to_remove = []
                 for i, t_card in enumerate(table_cards):
@@ -304,13 +380,11 @@ def computer_turn():
                 for idx in sorted(indices_to_remove, reverse=True):
                     table_cards.pop(idx)
                 
-                # Also capture opponent's top card if it matches
                 opp_top_card = None
                 if human.side_deck and human.side_deck[-1].numeric_value == h_card.numeric_value:
                     opp_top_card = human.side_deck.pop()
                     extra_captured.append(opp_top_card)
                 
-                # Add all extra captured cards to side deck
                 for ec in extra_captured:
                     comp.side_deck.append(ec)
                 
@@ -325,7 +399,6 @@ def computer_turn():
                 st.session_state.message = f"🤖 Stole Build {build['value']} with {h_card}!{extra_msg}"
                 return
 
-    # 4. Top (build with matching cards)
     for h_idx, h_card in enumerate(comp.hand):
         for t_idx, t_card in enumerate(table_cards):
             if h_card.numeric_value == t_card.numeric_value:
@@ -341,7 +414,6 @@ def computer_turn():
                     st.session_state.message = f"🤖 Topped {t_card} with {h_card} to Build {h_card.numeric_value}!"
                     return
 
-    # 5. Build
     for h_idx, h_card in enumerate(comp.hand):
         for t_idx, t_card in enumerate(table_cards):
             build_value = h_card.numeric_value + t_card.numeric_value
@@ -355,41 +427,38 @@ def computer_turn():
                         table_cards.pop(t_idx); comp.hand.pop(h_idx)
                         auto = check_auto_capture(build_value, comp)
                         if auto: existing['cards'].extend(auto)
-                        st.session_state.message = f"🤖 Built {build_value}!" + (f"  Auto-captured {auto}!" if auto else "")
+                        st.session_state.message = f"🤖 Built {build_value}!" + (f" ⚡ Auto-captured {auto}!" if auto else "")
                         return
                     else:
                         table_builds.append({'cards': [t_card, h_card], 'value': build_value, 'owner': comp.name})
                         table_cards.pop(t_idx); comp.hand.pop(h_idx)
                         auto = check_auto_capture(build_value, comp)
                         if auto: table_builds[-1]['cards'].extend(auto)
-                        st.session_state.message = f"🤖 Built {build_value}!" + (f" ⚡ Auto-captured {auto}!" if auto else "")
+                        st.session_state.message = f" Built {build_value}!" + (f" ⚡ Auto-captured {auto}!" if auto else "")
                         return
 
     comp.hand.sort(key=lambda c: c.numeric_value)
     played = comp.hand.pop(0); table_cards.append(played)
-    st.session_state.message = f" Threw {played}."
+    st.session_state.message = f"🤖 Threw {played}."
 
 # ==========================================
 # 4. MAIN APP UI
 # ==========================================
 def main():
-    st.markdown('<h1 class="main-title">🎰 SA Street Casino 🇦</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-title">🎰 SA Street Casino 🇿🇦</h1>', unsafe_allow_html=True)
     
-    if 'human' not in st.session_state:
-        st.markdown("""<div style="text-align:center; padding:50px;">
-            <h2 style="color:#FFD700;">Welcome to SA Street Casino!</h2>
-            <p>🃏 Ace-10 only. Two rounds.<br>🏗️ Build with multiple table cards + hand card.<br>
-             <b>TOPPING:</b> Top a table card with same-value hand card (need extra in hand)!<br>
-            👁️ See opponent's top card.<br>
-            ⚡ Auto-Capture: Opponent's top + table card = your build value?<br>
-            🎯 <b>Steal All:</b> When stealing a build, also capture all matching loose cards and opponent's top card!</p>
-        </div>""", unsafe_allow_html=True)
-        name = st.text_input("Name", "Player", label_visibility="collapsed")
-        if st.button("🎲 Start Game", type="primary"): init_game(name); st.rerun()
-        return
-
+    # UNDO BUTTON in sidebar
     with st.sidebar:
         st.header("📊 Scoreboard")
+        
+        # Undo button
+        if st.button("↩️ Undo Last Move", key="undo_btn", use_container_width=True):
+            if undo_last_move():
+                st.success("Move undone!")
+                st.rerun()
+            else:
+                st.warning("No moves to undo!")
+        
         st.markdown(f"**Round:** {st.session_state.round_num}/2")
         st.markdown("### 👁️ Opponent's Top Card")
         if st.session_state.computer.side_deck:
@@ -401,6 +470,20 @@ def main():
         st.markdown(f"""<div class="score-box"><h3>👤 {st.session_state.human.name}</h3><p style="font-size:2rem; color:#FFD700;">{st.session_state.human.get_points()} pts</p></div>
         <div class="score-box"><h3>🤖 Computer</h3><p style="font-size:2rem; color:#FFD700;">{st.session_state.computer.get_points()} pts</p></div>""", unsafe_allow_html=True)
         if st.button("🔄 New Game"): st.session_state.clear(); st.rerun()
+
+    if 'human' not in st.session_state:
+        st.markdown("""<div style="text-align:center; padding:50px;">
+            <h2 style="color:#FFD700;">Welcome to SA Street Casino!</h2>
+            <p>🃏 Ace-10 only. Two rounds.<br>🏗️ Build with multiple table cards + hand card.<br>
+            👑 <b>TOPPING:</b> Top a table card with same-value hand card (need extra in hand)!<br>
+            👁️ See opponent's top card.<br>
+            ⚡ Auto-Capture: Opponent's top + table card = your build value?<br>
+             <b>Steal All:</b> When stealing a build, also capture all matching loose cards and opponent's top card!<br>
+            ↩️ <b>Undo:</b> Click the Undo button to reverse your last move!</p>
+        </div>""", unsafe_allow_html=True)
+        name = st.text_input("Name", "Player", label_visibility="collapsed")
+        if st.button(" Start Game", type="primary"): init_game(name); st.rerun()
+        return
 
     st.info(f"🎯 {st.session_state.message}")
 
@@ -468,11 +551,12 @@ def main():
         action_col1, action_col2 = st.columns(2)
         
         with action_col1:
-            st.markdown("** Hit / Capture Builds**")
+            st.markdown("**🃏 Hit / Capture Builds**")
             for i, build in enumerate(st.session_state.table_builds):
                 if build['value'] == sel_card.numeric_value:
                     st.markdown(f"**Build {build['value']}** (By {build['owner']})")
                     if st.button(f"🎯 Hit Build {build['value']}", key=f"auto_hit_{i}", use_container_width=True):
+                        save_game_state()
                         human.hand.pop(st.session_state.selected_hand_idx)
                         human.side_deck.extend(build['cards']); human.side_deck.append(sel_card)
                         st.session_state.table_builds.pop(i)
@@ -486,7 +570,8 @@ def main():
             for i, t_card in enumerate(st.session_state.table_cards):
                 if t_card.numeric_value == sel_card.numeric_value:
                     st.markdown(f"**{t_card}** on table")
-                    if st.button(f" Hit {t_card}", key=f"auto_hit_card_{i}", use_container_width=True):
+                    if st.button(f"🎯 Hit {t_card}", key=f"auto_hit_card_{i}", use_container_width=True):
+                        save_game_state()
                         st.session_state.table_cards.pop(i)
                         human.hand.pop(st.session_state.selected_hand_idx)
                         human.side_deck.append(t_card); human.side_deck.append(sel_card)
@@ -505,7 +590,8 @@ def main():
                     has_card = any(c.numeric_value == new_val for j, c in enumerate(human.hand) if j != st.session_state.selected_hand_idx)
                     if has_card:
                         st.markdown(f"**Build {build['value']}** → Build {new_val}")
-                        if st.button(f"️ Build on {build['value']} → {new_val}", key=f"auto_build_{i}", use_container_width=True):
+                        if st.button(f"🏗️ Build on {build['value']} → {new_val}", key=f"auto_build_{i}", use_container_width=True):
+                            save_game_state()
                             target = next((b for b in st.session_state.table_builds if b['value'] == new_val and b is not build), None)
                             if target:
                                 base = sorted(target['cards'] + build['cards'], key=lambda c: c.numeric_value)
@@ -519,17 +605,18 @@ def main():
         
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # BUILD USING OPPONENT'S TOP CARD (when it matches your hand card)
+        # BUILD USING OPPONENT'S TOP CARD
         if st.session_state.computer.side_deck:
             opp_top = st.session_state.computer.side_deck[-1]
             if opp_top.numeric_value == sel_card.numeric_value:
                 st.markdown("### 👑 Build with Opponent's Top Card")
-                st.markdown(f'<div class="opp-sweep-option">👑 <b>Build {sel_card.numeric_value}</b>: Your {sel_card.value} + Computer\'s top {opp_top.value}<br><small>Both cards join your new build!</small></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="opp-sweep-option"> <b>Build {sel_card.numeric_value}</b>: Your {sel_card.value} + Computer\'s top {opp_top.value}<br><small>Both cards join your new build!</small></div>', unsafe_allow_html=True)
                 
                 existing_build = next((b for b in st.session_state.table_builds if b['value'] == sel_card.numeric_value), None)
                 btn_text = f"Add to Build {sel_card.numeric_value}" if existing_build else f"Build {sel_card.numeric_value} with Opponent's Top"
                 
                 if st.button(btn_text, use_container_width=True, key="act_build_opp_top"):
+                    save_game_state()
                     if existing_build:
                         existing_build['cards'].extend([opp_top, sel_card])
                         existing_build['owner'] = human.name
@@ -556,6 +643,7 @@ def main():
                 st.markdown(f'<div class="opp-sweep-option">🎯 <b>Sweep!</b> {t_card.value} (table) + {opp_top.value} (opponent top) = {sel_card.value} (your hand)<br><small>Capture both cards!</small></div>', unsafe_allow_html=True)
                 
                 if st.button("🎯 SWEEP with Opponent's Top!", use_container_width=True, key="act_opp_sweep"):
+                    save_game_state()
                     st.session_state.table_cards.pop(t_idx)
                     st.session_state.computer.side_deck.pop()
                     human.hand.pop(st.session_state.selected_hand_idx)
@@ -585,6 +673,7 @@ def main():
                         st.markdown(f'<div class="top-option">👑 <b>Top {t_card.value}</b> with {sel_card.value} and add to your <b>Build {sel_card.numeric_value}</b><br><small>(Both cards will join your existing build)</small></div>', unsafe_allow_html=True)
                         
                         if st.button(f"👑 Top & Add to Build {sel_card.numeric_value}", use_container_width=True, key="act_top_add"):
+                            save_game_state()
                             existing_build['cards'].extend([t_card, sel_card])
                             existing_build['owner'] = human.name
                             st.session_state.table_cards.pop(t_idx)
@@ -596,10 +685,11 @@ def main():
                             check_round_end()
                             st.rerun()
                     else:
-                        st.markdown("###  Top (Create New Build)")
+                        st.markdown("### 👑 Top (Create New Build)")
                         st.markdown(f'<div class="top-option">👑 <b>Top {t_card.value}</b> with {sel_card.value} to Build {sel_card.numeric_value}<br><small>(You have another {sel_card.value} in hand to capture it later)</small></div>', unsafe_allow_html=True)
                         
-                        if st.button(f"👑 Top & Build {sel_card.numeric_value}", use_container_width=True, key="act_top_new"):
+                        if st.button(f" Top & Build {sel_card.numeric_value}", use_container_width=True, key="act_top_new"):
+                            save_game_state()
                             st.session_state.table_builds.append({'cards': [t_card, sel_card], 'value': sel_card.numeric_value, 'owner': human.name})
                             st.session_state.table_cards.pop(t_idx)
                             human.hand.pop(st.session_state.selected_hand_idx)
@@ -615,8 +705,9 @@ def main():
         # THROW OPTION
         st.markdown("### 1️⃣ Throw Card")
         if st.button("Throw to Table", use_container_width=True, key="throw_btn"):
+            save_game_state()
             st.session_state.table_cards.append(human.hand.pop(st.session_state.selected_hand_idx))
-            st.session_state.message = f" Threw {sel_card}."
+            st.session_state.message = f"👤 Threw {sel_card}."
             st.session_state.selected_hand_idx = None
             computer_turn()
             check_round_end()
@@ -629,6 +720,7 @@ def main():
                 st.markdown("### 2️⃣ Sweep Multiple Cards")
                 st.markdown(f'<div class="sweep-info">🧹 SWEEP: {s_sum} = {sel_card.numeric_value}!</div>', unsafe_allow_html=True)
                 if st.button("🧹 SWEEP!", use_container_width=True, key="sweep_btn"):
+                    save_game_state()
                     caps = [st.session_state.table_cards[i] for i in sorted(st.session_state.selected_table_cards, reverse=True)]
                     for idx in sorted(st.session_state.selected_table_cards, reverse=True): st.session_state.table_cards.pop(idx)
                     human.hand.pop(st.session_state.selected_hand_idx)
@@ -646,12 +738,13 @@ def main():
                 if has_build_card:
                     st.markdown("### 3️⃣ Build with Selected Table Cards")
                     selected_cards_str = " + ".join([f"{st.session_state.table_cards[i].value}" for i in st.session_state.selected_table_cards])
-                    st.markdown(f'<div class="build-option">🏗️ <b>Build {build_value}</b>: {selected_cards_str} (table) + {sel_card.value} (hand) = {build_value}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="build-option">️ <b>Build {build_value}</b>: {selected_cards_str} (table) + {sel_card.value} (hand) = {build_value}</div>', unsafe_allow_html=True)
                     
                     existing = next((b for b in st.session_state.table_builds if b['value'] == build_value), None)
                     btn_text = f"Add to Build {build_value}" if existing else f"Build {build_value}"
                     
                     if st.button(btn_text, use_container_width=True, key="act_build_multi"):
+                        save_game_state()
                         table_cards_used = [st.session_state.table_cards[i] for i in sorted(st.session_state.selected_table_cards, reverse=True)]
                         
                         if existing:
@@ -670,7 +763,7 @@ def main():
                         if existing and auto: existing['cards'].extend(auto)
                         elif not existing and auto: st.session_state.table_builds[-1]['cards'].extend(auto)
                         
-                        auto_msg = f"  Auto-captured {auto}!" if auto else ""
+                        auto_msg = f" ⚡ Auto-captured {auto}!" if auto else ""
                         st.session_state.message = f"👤 Built {build_value} using {selected_cards_str} + {sel_card.value}!{auto_msg}"
                         st.session_state.selected_hand_idx = None
                         st.session_state.selected_table_cards = []
@@ -693,6 +786,7 @@ def main():
                         btn_text = f"Add to Build {build_value_opp}" if existing else f"Build {build_value_opp} (uses {opp_top})"
                         
                         if st.button(btn_text, use_container_width=True, key="act_build_opp_multi"):
+                            save_game_state()
                             table_cards_used = [st.session_state.table_cards[i] for i in sorted(st.session_state.selected_table_cards, reverse=True)]
                             
                             if existing:
